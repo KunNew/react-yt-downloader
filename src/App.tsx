@@ -6,7 +6,6 @@ import {
   ButtonGroup,
   Heading,
   Text,
-  HStack,
   Box,
   Stack,
   Select,
@@ -14,15 +13,24 @@ import {
   useColorMode,
   extendTheme,
   IconButton,
+  Progress,
+  Image,
 } from "@chakra-ui/react";
 import { useState } from "react";
 import axios from "axios";
 import { SunIcon, MoonIcon } from "@chakra-ui/icons";
+
 interface DownloadResponse {
   message: string;
   download_url: string;
   thumbnail_url: string;
   debug_info: string;
+}
+
+interface VideoInfo {
+  title: string;
+  duration: number;
+  thumbnail: string;
 }
 
 const config = {
@@ -40,6 +48,11 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [quality, setQuality] = useState("best");
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [conversionStatus, setConversionStatus] = useState<
+    "idle" | "preparing" | "downloading" | "converting" | "complete"
+  >("idle");
+  const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
 
   const qualityOptions =
     format === "mp3"
@@ -69,6 +82,17 @@ function App() {
     try {
       setIsLoading(true);
       setError("");
+      setDownloadProgress(0);
+      setConversionStatus("preparing");
+
+      // Add artificial initial progress
+      let artificialProgress = 0;
+      const progressInterval = setInterval(() => {
+        artificialProgress += 1;
+        if (artificialProgress <= 95) {
+          setDownloadProgress(artificialProgress);
+        }
+      }, 100); // Update every 100ms
 
       const apiUrl = `${import.meta.env.VITE_API_BASE_URL}/download`;
 
@@ -76,7 +100,29 @@ function App() {
         headers: {
           "Content-Type": "multipart/form-data",
         },
+        onDownloadProgress: (progressEvent) => {
+          const progress = (progressEvent.loaded / (progressEvent.total || 100)) * 100;
+          // Only update if the actual progress is higher than our artificial progress
+          if (progress > artificialProgress) {
+            setDownloadProgress(Math.min(99, progress));
+          }
+
+          if (progress < 33) {
+            setConversionStatus("preparing");
+          } else if (progress < 66) {
+            setConversionStatus("downloading");
+          } else if (progress < 100) {
+            setConversionStatus("converting");
+          } else {
+            setConversionStatus("complete");
+          }
+        },
       });
+
+      // Clear the interval and set to 100% when complete
+      clearInterval(progressInterval);
+      setDownloadProgress(100);
+      setConversionStatus("complete");
 
       const downloadLink = `${import.meta.env.VITE_API_BASE_URL}${
         response.data.download_url
@@ -92,6 +138,7 @@ function App() {
 
       // Reset URL and show success toast
       setUrl("");
+      setVideoInfo(null);
       toast({
         title: "Success!",
         description: "Your file is being downloaded.",
@@ -101,6 +148,7 @@ function App() {
         position: "top",
       });
     } catch (err: any) {
+      clearInterval(progressInterval); // Make sure to clear interval on error
       const errorMessage = axios.isAxiosError(err)
         ? err.response?.data?.detail || "Conversion failed"
         : "An error occurred during conversion";
@@ -116,6 +164,33 @@ function App() {
       });
     } finally {
       setIsLoading(false);
+      setTimeout(() => {
+        setDownloadProgress(0);
+        setConversionStatus("idle");
+      }, 1500);
+    }
+  };
+
+  const handleUrlChange = async (newUrl: string) => {
+    setUrl(newUrl);
+    if (newUrl.includes("youtube.com") || newUrl.includes("youtu.be")) {
+      try {
+        const formData = new FormData();
+        formData.append("video_url", newUrl);
+
+        const response = await axios.post(
+          `${import.meta.env.VITE_API_BASE_URL}/prepare`,
+          formData
+        );
+
+        setVideoInfo(response.data);
+        setError("");
+      } catch (err: any) {
+        setVideoInfo(null);
+        setError("Could not fetch video information");
+      }
+    } else {
+      setVideoInfo(null);
     }
   };
 
@@ -170,8 +245,9 @@ function App() {
                 bg={colorMode === "dark" ? "gray.600" : "white"}
                 color={colorMode === "dark" ? "white" : "black"}
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
+                onChange={(e) => handleUrlChange(e.target.value)}
               />
+
               <Select
                 value={quality}
                 onChange={(e) => setQuality(e.target.value)}
@@ -181,7 +257,9 @@ function App() {
                 borderRadius="md"
                 width="full"
                 borderColor={colorMode === "dark" ? "gray.500" : "gray.200"}
-                _hover={{ borderColor: colorMode === "dark" ? "gray.400" : "gray.300" }}
+                _hover={{
+                  borderColor: colorMode === "dark" ? "gray.400" : "gray.300",
+                }}
                 _focus={{
                   borderColor: "blue.500",
                   boxShadow: "0 0 0 1px var(--chakra-colors-blue-500)",
@@ -193,7 +271,13 @@ function App() {
                   </option>
                 ))}
               </Select>
-              <HStack spacing={4} justify="space-between" w="full">
+              <Stack
+                direction={{ base: "column", md: "row" }}
+                spacing={4}
+                justify="space-between"
+                w="full"
+                align={{ base: "stretch", md: "center" }}
+              >
                 <ButtonGroup
                   isAttached
                   bg={colorMode === "dark" ? "gray.600" : "gray.100"}
@@ -201,36 +285,88 @@ function App() {
                   borderRadius="full"
                   spacing={0}
                   size="sm"
+                  width={{ base: "full", md: "auto" }}
                 >
                   <Button
+                    flex={{ base: 1, md: "auto" }}
                     colorScheme="gray"
-                    bg={format === "mp3" ? (colorMode === "dark" ? "gray.700" : "white") : "transparent"}
-                    color={format === "mp3" ? (colorMode === "dark" ? "white" : "gray.700") : (colorMode === "dark" ? "gray.300" : "gray.500")}
+                    bg={
+                      format === "mp3"
+                        ? colorMode === "dark"
+                          ? "gray.700"
+                          : "white"
+                        : "transparent"
+                    }
+                    color={
+                      format === "mp3"
+                        ? colorMode === "dark"
+                          ? "white"
+                          : "gray.700"
+                        : colorMode === "dark"
+                        ? "gray.300"
+                        : "gray.500"
+                    }
                     onClick={() => setFormat("mp3")}
                     borderRadius="full"
                     px={6}
-                    _hover={{ bg: format === "mp3" ? (colorMode === "dark" ? "gray.700" : "white") : (colorMode === "dark" ? "gray.700" : "gray.200") }}
+                    _hover={{
+                      bg:
+                        format === "mp3"
+                          ? colorMode === "dark"
+                            ? "gray.700"
+                            : "white"
+                          : colorMode === "dark"
+                          ? "gray.700"
+                          : "gray.200",
+                    }}
                     boxShadow={format === "mp3" ? "sm" : "none"}
                   >
                     MP3
                   </Button>
                   <Button
+                    flex={{ base: 1, md: "auto" }}
                     disabled
                     colorScheme="gray"
-                    bg={format === "mp4" ? (colorMode === "dark" ? "gray.700" : "white") : "transparent"}
-                    color={format === "mp4" ? (colorMode === "dark" ? "white" : "gray.700") : (colorMode === "dark" ? "gray.300" : "gray.500")}
+                    bg={
+                      format === "mp4"
+                        ? colorMode === "dark"
+                          ? "gray.700"
+                          : "white"
+                        : "transparent"
+                    }
+                    color={
+                      format === "mp4"
+                        ? colorMode === "dark"
+                          ? "white"
+                          : "gray.700"
+                        : colorMode === "dark"
+                        ? "gray.300"
+                        : "gray.500"
+                    }
                     onClick={() => setFormat("mp4")}
                     borderRadius="full"
                     px={6}
-                    _hover={{ bg: format === "mp4" ? (colorMode === "dark" ? "gray.700" : "white") : (colorMode === "dark" ? "gray.700" : "gray.200") }}
+                    _hover={{
+                      bg:
+                        format === "mp4"
+                          ? colorMode === "dark"
+                            ? "gray.700"
+                            : "white"
+                          : colorMode === "dark"
+                          ? "gray.700"
+                          : "gray.200",
+                    }}
                     boxShadow={format === "mp4" ? "sm" : "none"}
                   >
                     MP4
                   </Button>
                 </ButtonGroup>
                 <Button
+                  width={{ base: "full", md: "auto" }}
                   size="md"
-                  colorScheme={colorMode === "dark" ? "whiteAlpha" : "blackAlpha"}
+                  colorScheme={
+                    colorMode === "dark" ? "whiteAlpha" : "blackAlpha"
+                  }
                   bg={colorMode === "dark" ? "white" : "black"}
                   color={colorMode === "dark" ? "black" : "white"}
                   onClick={handleConvert}
@@ -244,11 +380,68 @@ function App() {
                 >
                   Convert
                 </Button>
-              </HStack>
+              </Stack>
+              {(isLoading || downloadProgress > 0) && (
+                <Box w="full">
+                  <Progress
+                    size="sm"
+                    value={downloadProgress}
+                    colorScheme="blue"
+                    borderRadius="full"
+                    hasStripe
+                    isAnimated
+                    sx={{
+                      "& > div:first-of-type": {
+                        transitionProperty: "width",
+                        transitionDuration: "0.3s",
+                      },
+                    }}
+                  />
+                  <Text
+                    fontSize="sm"
+                    textAlign="center"
+                    mt={2}
+                    color={colorMode === "dark" ? "gray.300" : "gray.600"}
+                  >
+                    {conversionStatus === "preparing" &&
+                      "Preparing download..."}
+                    {conversionStatus === "downloading" &&
+                      `Downloading... ${Math.round(downloadProgress)}%`}
+                    {conversionStatus === "converting" &&
+                      "Converting to MP3..."}
+                    {conversionStatus === "complete" && "Download Complete!"}
+                  </Text>
+                </Box>
+              )}
               {error && (
                 <Text color="red.500" fontSize="sm">
                   {error}
                 </Text>
+              )}
+              {videoInfo && (
+                <Box
+                  w="full"
+                  p={4}
+                  bg={colorMode === "dark" ? "gray.600" : "gray.100"}
+                  borderRadius="md"
+                >
+                  <Stack direction="row" spacing={4} align="center">
+                    <Image
+                      src={videoInfo.thumbnail}
+                      alt={videoInfo.title}
+                      boxSize="100px"
+                      objectFit="cover"
+                      borderRadius="md"
+                    />
+                    <VStack align="start" spacing={1}>
+                      <Text fontWeight="bold">{videoInfo.title}</Text>
+                      <Text fontSize="sm">
+                        Duration: {Math.floor(videoInfo.duration / 60)}:
+                        {(videoInfo.duration % 60).toString().padStart(2, "0")}
+                      </Text>
+                    </VStack>
+                  </Stack>
+                </Box>
               )}
             </VStack>
 
