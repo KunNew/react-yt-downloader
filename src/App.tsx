@@ -425,16 +425,22 @@ function App() {
                   bg={colorMode === "dark" ? "gray.600" : "gray.100"}
                   borderRadius="md"
                 >
-                  <Stack direction="row" spacing={4} align="center">
+                  <Stack 
+                    direction={{ base: "column", sm: "row" }} 
+                    spacing={4} 
+                    align={{ base: "center", sm: "center" }}
+                  >
                     <Image
                       src={videoInfo.thumbnail}
                       alt={videoInfo.title}
-                      boxSize="100px"
+                      boxSize={{ base: "150px", sm: "100px" }}
                       objectFit="cover"
                       borderRadius="md"
                     />
-                    <VStack align="start" spacing={1}>
-                      <Text fontWeight="bold">{videoInfo.title}</Text>
+                    <VStack align={{ base: "center", sm: "start" }} spacing={1}>
+                      <Text fontWeight="bold" textAlign={{ base: "center", sm: "left" }}>
+                        {videoInfo.title}
+                      </Text>
                       <Text fontSize="sm">
                         Duration: {Math.floor(videoInfo.duration / 60)}:
                         {(videoInfo.duration % 60).toString().padStart(2, "0")}
