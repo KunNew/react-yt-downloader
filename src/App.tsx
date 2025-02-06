@@ -15,6 +15,8 @@ import {
   IconButton,
   Progress,
   Image,
+  Skeleton,
+  SkeletonText,
 } from "@chakra-ui/react";
 import { useState } from "react";
 import axios from "axios";
@@ -417,6 +419,34 @@ function App() {
                 <Text color="red.500" fontSize="sm">
                   {error}
                 </Text>
+              )}
+              {url && !videoInfo && !error && (
+                <Box
+                  w="full"
+                  p={4}
+                  bg={colorMode === "dark" ? "gray.600" : "gray.100"}
+                  borderRadius="md"
+                >
+                  <Stack
+                    direction={{ base: "column", sm: "row" }}
+                    spacing={4}
+                    align={{ base: "center", sm: "center" }}
+                  >
+                    <Skeleton
+                      boxSize={{ base: "150px", sm: "100px" }}
+                      borderRadius="md"
+                    />
+                    <VStack align={{ base: "center", sm: "start" }} spacing={1} flex="1">
+                      <SkeletonText
+                        noOfLines={2}
+                        spacing={2}
+                        skeletonHeight={4}
+                        width="full"
+                      />
+                      <Skeleton height="18px" width="100px" />
+                    </VStack>
+                  </Stack>
+                </Box>
               )}
               {videoInfo && (
                 <Box
