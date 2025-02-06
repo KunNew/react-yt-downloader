@@ -78,7 +78,7 @@ function App() {
     const formData = new FormData();
     formData.append("video_url", url);
     formData.append("quality", quality);
-
+    let progressInterval: number = 0;
     try {
       setIsLoading(true);
       setError("");
@@ -87,7 +87,7 @@ function App() {
 
       // Add artificial initial progress
       let artificialProgress = 0;
-      const progressInterval = setInterval(() => {
+      progressInterval = setInterval(() => {
         artificialProgress += 1;
         if (artificialProgress <= 95) {
           setDownloadProgress(artificialProgress);
