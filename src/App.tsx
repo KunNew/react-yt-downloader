@@ -21,6 +21,7 @@ import {
 import { useState } from "react";
 import axios from "axios";
 import { SunIcon, MoonIcon } from "@chakra-ui/icons";
+import { MdMusicNote } from "react-icons/md";
 
 interface DownloadResponse {
   message: string;
@@ -55,6 +56,8 @@ function App() {
     "idle" | "preparing" | "downloading" | "converting" | "complete"
   >("idle");
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
+  const [init, setInit] = useState(false);
+  const [isVideoInfoLoading, setIsVideoInfoLoading] = useState(false);
 
   const qualityOptions =
     format === "mp3"
@@ -68,6 +71,7 @@ function App() {
           { value: "medium", label: "Medium Quality" },
           { value: "worst", label: "Low Quality" },
         ];
+
 
   const handleConvert = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,7 +107,8 @@ function App() {
           "Content-Type": "multipart/form-data",
         },
         onDownloadProgress: (progressEvent) => {
-          const progress = (progressEvent.loaded / (progressEvent.total || 100)) * 100;
+          const progress =
+            (progressEvent.loaded / (progressEvent.total || 100)) * 100;
           // Only update if the actual progress is higher than our artificial progress
           if (progress > artificialProgress) {
             setDownloadProgress(Math.min(99, progress));
@@ -177,6 +182,9 @@ function App() {
     setUrl(newUrl);
     if (newUrl.includes("youtube.com") || newUrl.includes("youtu.be")) {
       try {
+        setIsVideoInfoLoading(true);
+        setVideoInfo(null);
+
         const formData = new FormData();
         formData.append("video_url", newUrl);
 
@@ -190,19 +198,19 @@ function App() {
       } catch (err: any) {
         setVideoInfo(null);
         setError("Could not fetch video information");
+      } finally {
+        setIsVideoInfoLoading(false);
       }
     } else {
       setVideoInfo(null);
     }
   };
 
+
+
   return (
     <>
-      <VStack
-        minH="100vh"
-        bg={colorMode === "dark" ? "gray.800" : "blue.600"}
-        spacing={0}
-      >
+      <VStack minH="100vh" spacing={0} position="relative" zIndex={1} bg={colorMode === "dark" ? "#1A202C" : "#3182ce"}>
         {/* Header */}
         <Container maxW="container.md" py={4}>
           <Stack
@@ -212,9 +220,16 @@ function App() {
             w="full"
             spacing={{ base: 4, sm: 0 }}
           >
-            <Heading color="white" size="lg">
-              YTMP3
-            </Heading>
+            <Stack
+              direction="row"
+              align="center"
+              spacing={2}
+            >
+              <MdMusicNote size={24} color="white" />
+              <Heading color="white" size="lg">
+                YTMP3
+              </Heading>
+            </Stack>
             <IconButton
               size="sm"
               aria-label="Toggle color mode"
@@ -420,7 +435,7 @@ function App() {
                   {error}
                 </Text>
               )}
-              {url && !videoInfo && !error && (
+              {url && !videoInfo && !error && isVideoInfoLoading && (
                 <Box
                   w="full"
                   p={4}
@@ -436,7 +451,11 @@ function App() {
                       boxSize={{ base: "150px", sm: "100px" }}
                       borderRadius="md"
                     />
-                    <VStack align={{ base: "center", sm: "start" }} spacing={1} flex="1">
+                    <VStack
+                      align={{ base: "center", sm: "start" }}
+                      spacing={1}
+                      flex="1"
+                    >
                       <SkeletonText
                         noOfLines={2}
                         spacing={2}
@@ -455,9 +474,9 @@ function App() {
                   bg={colorMode === "dark" ? "gray.600" : "gray.100"}
                   borderRadius="md"
                 >
-                  <Stack 
-                    direction={{ base: "column", sm: "row" }} 
-                    spacing={4} 
+                  <Stack
+                    direction={{ base: "column", sm: "row" }}
+                    spacing={4}
                     align={{ base: "center", sm: "center" }}
                   >
                     <Image
@@ -468,7 +487,10 @@ function App() {
                       borderRadius="md"
                     />
                     <VStack align={{ base: "center", sm: "start" }} spacing={1}>
-                      <Text fontWeight="bold" textAlign={{ base: "center", sm: "left" }}>
+                      <Text
+                        fontWeight="bold"
+                        textAlign={{ base: "center", sm: "left" }}
+                      >
                         {videoInfo.title}
                       </Text>
                       <Text fontSize="sm">
@@ -491,7 +513,23 @@ function App() {
               align="start"
               spacing={6}
             >
-              <Heading size="lg">YouTube Video Converter</Heading>
+              <Heading 
+                size="lg"
+                bgGradient={
+                  colorMode === "dark"
+                    ? "linear(to-r, blue.300, cyan.300)"
+                    : "linear(to-r, blue.500, cyan.500)"
+                }
+                bgClip="text"
+                _hover={{
+                  bgGradient: colorMode === "dark"
+                    ? "linear(to-r, blue.200, cyan.200)"
+                    : "linear(to-r, blue.600, cyan.600)"
+                }}
+                transition="all 0.3s ease"
+              >
+                YouTube Video Converter
+              </Heading>
               <Text>
                 Transform your favorite YouTube content into downloadable files
                 with our converter tool. Whether you need audio-only MP3 files
@@ -517,7 +555,23 @@ function App() {
                 </Text>
                 .
               </Text>
-              <Heading size="lg">Quick Start Guide</Heading>
+              <Heading 
+                size="lg"
+                bgGradient={
+                  colorMode === "dark"
+                    ? "linear(to-r, blue.300, cyan.300)"
+                    : "linear(to-r, blue.500, cyan.500)"
+                }
+                bgClip="text"
+                _hover={{
+                  bgGradient: colorMode === "dark"
+                    ? "linear(to-r, blue.200, cyan.200)"
+                    : "linear(to-r, blue.600, cyan.600)"
+                }}
+                transition="all 0.3s ease"
+              >
+                Quick Start Guide
+              </Heading>
               <VStack align="start" spacing={4} w="full">
                 <Text>
                   1. Find your desired YouTube video and copy its URL from the
