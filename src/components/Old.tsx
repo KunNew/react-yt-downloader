@@ -56,7 +56,6 @@ function App() {
     "idle" | "preparing" | "downloading" | "converting" | "complete"
   >("idle");
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
-  const [init, setInit] = useState(false);
   const [isVideoInfoLoading, setIsVideoInfoLoading] = useState(false);
 
   const qualityOptions =

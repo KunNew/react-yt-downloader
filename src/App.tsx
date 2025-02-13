@@ -60,12 +60,8 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [quality, setQuality] = useState("best");
-  const [downloadProgress, setDownloadProgress] = useState(0);
-  const [conversionStatus, setConversionStatus] = useState<
-    "idle" | "preparing" | "downloading" | "converting" | "complete"
-  >("idle");
+  
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
-  const [init, setInit] = useState(false);
   const [isVideoInfoLoading, setIsVideoInfoLoading] = useState(false);
   const [downloads, setDownloads] = useState<Record<string, Download>>({});
 
@@ -121,27 +117,23 @@ function App() {
     try {
       setIsLoading(true);
       setError("");
-      setDownloadProgress(0);
-      setConversionStatus("preparing");
 
-      // Add artificial initial progress
       let artificialProgress = 0;
       progressInterval = setInterval(() => {
         artificialProgress += 1;
         if (artificialProgress <= 95) {
-          setDownloadProgress(artificialProgress);
           setDownloads(prev => ({
             ...prev,
             [downloadId]: {
               ...prev[downloadId],
               progress: artificialProgress,
-              status: artificialProgress < 33 ? "preparing" : 
-                     artificialProgress < 66 ? "downloading" : 
+              status: artificialProgress < 30 ? "preparing" : 
+                     artificialProgress < 80 ? "downloading" : 
                      "converting"
             }
           }));
         }
-      }, 100); // Update every 100ms
+      }, 100);
 
       const apiUrl = `${import.meta.env.VITE_API_BASE_URL}/download`;
 
@@ -151,41 +143,23 @@ function App() {
         },
         onDownloadProgress: (progressEvent) => {
           const progress = (progressEvent.loaded / (progressEvent.total || 100)) * 100;
-          // Only update if the actual progress is higher than our artificial progress
           if (progress > artificialProgress) {
             const actualProgress = Math.min(99, progress);
-            setDownloadProgress(actualProgress);
-            
             setDownloads(prev => ({
               ...prev,
               [downloadId]: {
                 ...prev[downloadId],
                 progress: actualProgress,
-                status: actualProgress < 33 ? "preparing" : 
-                       actualProgress < 66 ? "downloading" : 
+                status: actualProgress < 30 ? "preparing" : 
+                       actualProgress < 80 ? "downloading" : 
                        "converting"
               }
             }));
           }
-
-          if (progress < 33) {
-            setConversionStatus("preparing");
-          } else if (progress < 66) {
-            setConversionStatus("downloading");
-          } else if (progress < 100) {
-            setConversionStatus("converting");
-          } else {
-            setConversionStatus("complete");
-          }
         },
       });
 
-      // Clear the interval and set to 100% when complete
-      clearInterval(progressInterval);
-      setDownloadProgress(100);
-      setConversionStatus("complete");
-
-      // Set download to complete
+      // Update final state
       setDownloads(prev => ({
         ...prev,
         [downloadId]: {
@@ -248,10 +222,6 @@ function App() {
       });
     } finally {
       setIsLoading(false);
-      setTimeout(() => {
-        setDownloadProgress(0);
-        setConversionStatus("idle");
-      }, 1500);
     }
   };
 
