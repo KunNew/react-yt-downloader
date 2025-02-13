@@ -36,6 +36,15 @@ interface VideoInfo {
   thumbnail: string;
 }
 
+interface Download {
+  id: string;
+  url: string;
+  progress: number;
+  status: "preparing" | "downloading" | "converting" | "complete" | "error";
+  error?: string;
+  title?: string;
+}
+
 const config = {
   initialColorMode: "light",
   useSystemColorMode: false,
@@ -58,6 +67,7 @@ function App() {
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
   const [init, setInit] = useState(false);
   const [isVideoInfoLoading, setIsVideoInfoLoading] = useState(false);
+  const [downloads, setDownloads] = useState<Record<string, Download>>({});
 
   const qualityOptions =
     format === "mp3"
@@ -72,6 +82,16 @@ function App() {
           { value: "worst", label: "Low Quality" },
         ];
 
+  // Add this function to remove completed downloads after a delay
+  const removeDownloadAfterDelay = (downloadId: string, delay: number = 3000) => {
+    setTimeout(() => {
+      setDownloads(prev => {
+        const newDownloads = { ...prev };
+        delete newDownloads[downloadId];
+        return newDownloads;
+      });
+    }, delay);
+  };
 
   const handleConvert = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,10 +101,23 @@ function App() {
       return;
     }
 
+    const downloadId = Date.now().toString();
     const formData = new FormData();
     formData.append("video_url", url);
     formData.append("quality", quality);
     let progressInterval: number = 0;
+
+    setDownloads(prev => ({
+      ...prev,
+      [downloadId]: {
+        id: downloadId,
+        url,
+        progress: 0,
+        status: "preparing",
+        title: videoInfo?.title || url
+      }
+    }));
+
     try {
       setIsLoading(true);
       setError("");
@@ -97,6 +130,16 @@ function App() {
         artificialProgress += 1;
         if (artificialProgress <= 95) {
           setDownloadProgress(artificialProgress);
+          setDownloads(prev => ({
+            ...prev,
+            [downloadId]: {
+              ...prev[downloadId],
+              progress: artificialProgress,
+              status: artificialProgress < 33 ? "preparing" : 
+                     artificialProgress < 66 ? "downloading" : 
+                     "converting"
+            }
+          }));
         }
       }, 100); // Update every 100ms
 
@@ -107,11 +150,22 @@ function App() {
           "Content-Type": "multipart/form-data",
         },
         onDownloadProgress: (progressEvent) => {
-          const progress =
-            (progressEvent.loaded / (progressEvent.total || 100)) * 100;
+          const progress = (progressEvent.loaded / (progressEvent.total || 100)) * 100;
           // Only update if the actual progress is higher than our artificial progress
           if (progress > artificialProgress) {
-            setDownloadProgress(Math.min(99, progress));
+            const actualProgress = Math.min(99, progress);
+            setDownloadProgress(actualProgress);
+            
+            setDownloads(prev => ({
+              ...prev,
+              [downloadId]: {
+                ...prev[downloadId],
+                progress: actualProgress,
+                status: actualProgress < 33 ? "preparing" : 
+                       actualProgress < 66 ? "downloading" : 
+                       "converting"
+              }
+            }));
           }
 
           if (progress < 33) {
@@ -131,9 +185,17 @@ function App() {
       setDownloadProgress(100);
       setConversionStatus("complete");
 
-      const downloadLink = `${import.meta.env.VITE_API_BASE_URL}${
-        response.data.download_url
-      }`;
+      // Set download to complete
+      setDownloads(prev => ({
+        ...prev,
+        [downloadId]: {
+          ...prev[downloadId],
+          progress: 100,
+          status: "complete"
+        }
+      }));
+
+      const downloadLink = `${import.meta.env.VITE_API_BASE_URL}${response.data.download_url}`;
 
       // Trigger download automatically
       const link = document.createElement("a");
@@ -142,6 +204,9 @@ function App() {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+
+      // Schedule removal after showing completion
+      removeDownloadAfterDelay(downloadId);
 
       // Reset URL and show success toast
       setUrl("");
@@ -159,6 +224,18 @@ function App() {
       const errorMessage = axios.isAxiosError(err)
         ? err.response?.data?.detail || "Conversion failed"
         : "An error occurred during conversion";
+
+      setDownloads(prev => ({
+        ...prev,
+        [downloadId]: {
+          ...prev[downloadId],
+          status: "error",
+          error: errorMessage
+        }
+      }));
+
+      // Schedule removal of the error state
+      removeDownloadAfterDelay(downloadId, 5000);
 
       setError(errorMessage);
       toast({
@@ -206,11 +283,74 @@ function App() {
     }
   };
 
-
+  // Update the ActiveDownloads component to show detailed progress
+  const ActiveDownloads = () => (
+    <VStack spacing={4} w="full">
+      {Object.values(downloads).map((download) => (
+        <Box
+          key={download.id}
+          w="full"
+          p={4}
+          bg={colorMode === "dark" ? "#27272A" : "gray.100"}
+          borderRadius="md"
+        >
+          <VStack spacing={2} align="start" w="full">
+            <Text fontSize="sm" noOfLines={1} fontWeight="medium">
+              {download.title || download.url}
+            </Text>
+            <Progress
+              size="md"
+              value={download.progress}
+              colorScheme={
+                download.status === "error" ? "red" : 
+                download.status === "complete" ? "green" : "blue"
+              }
+              w="full"
+              borderRadius="full"
+              hasStripe
+              isAnimated={download.status !== "complete"}
+            />
+            <Stack 
+              direction="row" 
+              w="full" 
+              justify="space-between" 
+              align="center"
+            >
+              <Text 
+                fontSize="sm" 
+                color={
+                  download.status === "error" ? "red.500" :
+                  download.status === "complete" ? "green.500" :
+                  undefined
+                }
+              >
+                {download.status === "error" ? download.error : 
+                 download.status === "preparing" ? "Preparing download..." :
+                 download.status === "downloading" ? "Downloading" :
+                 download.status === "converting" ? "Converting" :
+                 "Download Complete!"}
+              </Text>
+              <Text 
+                fontSize="sm" 
+                fontWeight="bold"
+                color={
+                  download.status === "complete" ? "green.500" :
+                  download.status === "error" ? "red.500" :
+                  "blue.500"
+                }
+              >
+                {download.progress}%
+              </Text>
+            </Stack>
+          </VStack>
+        </Box>
+      ))}
+    </VStack>
+  );
 
   return (
     <>
-      <VStack minH="100vh" spacing={0} position="relative" zIndex={1} bg={colorMode === "dark" ? "#1A202C" : "#3182ce"}>
+      <VStack minH="100vh" spacing={0} position="relative" zIndex={1} bg={colorMode === "dark" ? "#09090B" : "#3182ce"}>
         {/* Header */}
         <Container maxW="container.md" py={4}>
           <Stack
@@ -247,7 +387,7 @@ function App() {
           <Container maxW="container.md" py={8}>
             <VStack
               spacing={6}
-              bg={colorMode === "dark" ? "gray.700" : "white"}
+              bg={colorMode === "dark" ? "#1C1C1F" : "white"}
               color={colorMode === "dark" ? "white" : "black"}
               p={8}
               borderRadius="lg"
@@ -259,27 +399,35 @@ function App() {
               <Input
                 placeholder="youtube.com/watch?v=..."
                 size="lg"
-                bg={colorMode === "dark" ? "gray.600" : "white"}
+                bg={colorMode === "dark" ? "#27272A" : "white"}
                 color={colorMode === "dark" ? "white" : "black"}
                 value={url}
                 onChange={(e) => handleUrlChange(e.target.value)}
+                borderColor={colorMode === "dark" ? "#27272A" : "gray.200"}
+                _hover={{
+                  borderColor: colorMode === "dark" ? "#383838" : "gray.300",
+                }}
+                _focus={{
+                  borderColor: "blue.500",
+                  bg: colorMode === "dark" ? "#383838" : "white",
+                }}
               />
 
               <Select
                 value={quality}
                 onChange={(e) => setQuality(e.target.value)}
                 size="lg"
-                bg={colorMode === "dark" ? "gray.600" : "white"}
+                bg={colorMode === "dark" ? "#27272A" : "white"}
                 color={colorMode === "dark" ? "white" : "black"}
                 borderRadius="md"
                 width="full"
-                borderColor={colorMode === "dark" ? "gray.500" : "gray.200"}
+                borderColor={colorMode === "dark" ? "#27272A" : "gray.200"}
                 _hover={{
-                  borderColor: colorMode === "dark" ? "gray.400" : "gray.300",
+                  borderColor: colorMode === "dark" ? "#383838" : "gray.300",
                 }}
                 _focus={{
                   borderColor: "blue.500",
-                  boxShadow: "0 0 0 1px var(--chakra-colors-blue-500)",
+                  bg: colorMode === "dark" ? "#383838" : "white",
                 }}
               >
                 {qualityOptions.map((option) => (
@@ -297,7 +445,7 @@ function App() {
               >
                 <ButtonGroup
                   isAttached
-                  bg={colorMode === "dark" ? "gray.600" : "gray.100"}
+                  bg={colorMode === "dark" ? "#27272A" : "gray.100"}
                   p={1}
                   borderRadius="full"
                   spacing={0}
@@ -310,7 +458,7 @@ function App() {
                     bg={
                       format === "mp3"
                         ? colorMode === "dark"
-                          ? "gray.700"
+                          ? "#383838"
                           : "white"
                         : "transparent"
                     }
@@ -320,7 +468,7 @@ function App() {
                           ? "white"
                           : "gray.700"
                         : colorMode === "dark"
-                        ? "gray.300"
+                        ? "gray.400"
                         : "gray.500"
                     }
                     onClick={() => setFormat("mp3")}
@@ -330,10 +478,10 @@ function App() {
                       bg:
                         format === "mp3"
                           ? colorMode === "dark"
-                            ? "gray.700"
+                            ? "#383838"
                             : "white"
                           : colorMode === "dark"
-                          ? "gray.700"
+                          ? "#383838"
                           : "gray.200",
                     }}
                     boxShadow={format === "mp3" ? "sm" : "none"}
@@ -347,7 +495,7 @@ function App() {
                     bg={
                       format === "mp4"
                         ? colorMode === "dark"
-                          ? "gray.700"
+                          ? "#383838"
                           : "white"
                         : "transparent"
                     }
@@ -357,7 +505,7 @@ function App() {
                           ? "white"
                           : "gray.700"
                         : colorMode === "dark"
-                        ? "gray.300"
+                        ? "gray.400"
                         : "gray.500"
                     }
                     onClick={() => setFormat("mp4")}
@@ -367,10 +515,10 @@ function App() {
                       bg:
                         format === "mp4"
                           ? colorMode === "dark"
-                            ? "gray.700"
+                            ? "#383838"
                             : "white"
                           : colorMode === "dark"
-                          ? "gray.700"
+                          ? "#383838"
                           : "gray.200",
                     }}
                     boxShadow={format === "mp4" ? "sm" : "none"}
@@ -398,38 +546,6 @@ function App() {
                   Convert
                 </Button>
               </Stack>
-              {(isLoading || downloadProgress > 0) && (
-                <Box w="full">
-                  <Progress
-                    size="sm"
-                    value={downloadProgress}
-                    colorScheme="blue"
-                    borderRadius="full"
-                    hasStripe
-                    isAnimated
-                    sx={{
-                      "& > div:first-of-type": {
-                        transitionProperty: "width",
-                        transitionDuration: "0.3s",
-                      },
-                    }}
-                  />
-                  <Text
-                    fontSize="sm"
-                    textAlign="center"
-                    mt={2}
-                    color={colorMode === "dark" ? "gray.300" : "gray.600"}
-                  >
-                    {conversionStatus === "preparing" &&
-                      "Preparing download..."}
-                    {conversionStatus === "downloading" &&
-                      `Downloading... ${Math.round(downloadProgress)}%`}
-                    {conversionStatus === "converting" &&
-                      "Converting to MP3..."}
-                    {conversionStatus === "complete" && "Download Complete!"}
-                  </Text>
-                </Box>
-              )}
               {error && (
                 <Text color="red.500" fontSize="sm">
                   {error}
@@ -439,7 +555,7 @@ function App() {
                 <Box
                   w="full"
                   p={4}
-                  bg={colorMode === "dark" ? "gray.600" : "gray.100"}
+                  bg={colorMode === "dark" ? "#27272A" : "gray.100"}
                   borderRadius="md"
                 >
                   <Stack
@@ -450,6 +566,8 @@ function App() {
                     <Skeleton
                       boxSize={{ base: "150px", sm: "100px" }}
                       borderRadius="md"
+                      startColor={colorMode === "dark" ? "#1C1C1F" : "gray.200"}
+                      endColor={colorMode === "dark" ? "#383838" : "gray.400"}
                     />
                     <VStack
                       align={{ base: "center", sm: "start" }}
@@ -461,8 +579,15 @@ function App() {
                         spacing={2}
                         skeletonHeight={4}
                         width="full"
+                        startColor={colorMode === "dark" ? "#1C1C1F" : "gray.200"}
+                        endColor={colorMode === "dark" ? "#383838" : "gray.400"}
                       />
-                      <Skeleton height="18px" width="100px" />
+                      <Skeleton 
+                        height="18px" 
+                        width="100px"
+                        startColor={colorMode === "dark" ? "#1C1C1F" : "gray.200"}
+                        endColor={colorMode === "dark" ? "#383838" : "gray.400"}
+                      />
                     </VStack>
                   </Stack>
                 </Box>
@@ -471,7 +596,7 @@ function App() {
                 <Box
                   w="full"
                   p={4}
-                  bg={colorMode === "dark" ? "gray.600" : "gray.100"}
+                  bg={colorMode === "dark" ? "#27272A" : "gray.100"}
                   borderRadius="md"
                 >
                   <Stack
@@ -503,9 +628,27 @@ function App() {
               )}
             </VStack>
 
+            {/* Add ActiveDownloads component after the converter UI */}
+            {Object.keys(downloads).length > 0 && (
+              <VStack
+                mt={6}
+                spacing={6}
+                bg={colorMode === "dark" ? "#1C1C1F" : "white"}
+                color={colorMode === "dark" ? "white" : "black"}
+                p={8}
+                borderRadius="lg"
+                boxShadow="lg"
+              >
+                <Text fontSize="lg" fontWeight="bold">
+                  Active Downloads
+                </Text>
+                <ActiveDownloads />
+              </VStack>
+            )}
+
             {/* Description Section */}
             <VStack
-              bg={colorMode === "dark" ? "gray.700" : "white"}
+              bg={colorMode === "dark" ? "#1C1C1F" : "white"}
               color={colorMode === "dark" ? "white" : "black"}
               p={8}
               mt={8}
